@@ -3,7 +3,7 @@ from sqlmodel import create_engine
 from models import Link
 
 
-engine = create_engine("sqlite:///database.db", echo=True)
+engine = create_engine("sqlite:///database.db")
 
 
 def create_db_and_tables():
