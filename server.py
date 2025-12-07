@@ -22,7 +22,9 @@ import os
 
 load_dotenv()
 
-
+DEBUG_MODE = os.getenv("DEBUG_MODE") in ("True", "true" "1",1, True)
+BASE_URL = os.getenv("BASE_URL")
+PREFIX = os.getenv("PREFIX")
 
 security = HTTPBasic()
 
@@ -43,10 +45,12 @@ async def lifespan(app: FastAPI):
     # something on exit
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan) if DEBUG_MODE else FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+r = APIRouter(prefix=PREFIX)
 
 
-@app.get("/{nickname}", status_code=303)
+
+@r.get("/{nickname}", status_code=303)
 async def redirect(nickname: str, engine=Depends(get_engine)):
     with Session(engine) as s:
         statement = select(Link.url).where(Link.nickname == nickname)
@@ -59,7 +63,7 @@ async def redirect(nickname: str, engine=Depends(get_engine)):
 # admin zone
 
 
-@app.get("/links/")
+@r.get("/links/")
 async def get_all_links(engine=Depends(get_engine), user=Depends(auth)):
     with Session(engine) as s:
         return s.exec(select(Link)).all()
@@ -78,16 +82,17 @@ def add_link_to_db(link: Link, engine) -> Link:
         return link
 
 
-@app.post("/links/", status_code=201)
+@r.post("/links/", status_code=201)
 async def add_link(
-    link: Link, 
+    nickname: str, 
+    url: str,
     engine=Depends(get_engine), 
     user=Depends(auth)
     ):
-    return add_link_to_db(link, engine)
+    return add_link_to_db(Link(nickname=nickname, url=url), engine)
 
 
-@app.delete("/{nickname}")
+@r.delete("/{nickname}")
 async def delete_record(
     nickname: str, 
     engine=Depends(get_engine), 
@@ -100,19 +105,24 @@ async def delete_record(
             return HTTPException(404)
         s.delete(obj)
         s.commit()
+#
 
-
-@app.post("/{url}", status_code=201)
+@r.post("/{url:path}", status_code=201)
 async def create_fast_link(
     url: str, 
     engine=Depends(get_engine), 
-    user=Depends(auth)
+    # user=Depends(auth) # lets say this pointer is public
     ):
     FAST_LINK_LENGTH = 4
-    link = Link(nickname=generate_fast_link(FAST_LINK_LENGTH), url=url)
+    with Session(engine) as s:
+        nicknames = s.exec(select(Link.nickname)).all()
+        while (fast_link := generate_fast_link(FAST_LINK_LENGTH)) in nicknames:
+            pass
+    
+    link = Link(nickname=fast_link, url=url)
     logger.info(f"Created link for {url} - {link.nickname}")
     add_link_to_db(link, engine)
-    return os.getenv("BASE_URL")+"/"+link.nickname
+    return BASE_URL+PREFIX+"/"+link.nickname
 
 def generate_fast_link(length) -> str:
     alphabet = string.ascii_letters + string.digits
@@ -120,14 +130,18 @@ def generate_fast_link(length) -> str:
 
 def validated_url(url) -> str:
     # too simple but its okay i guess
-    if not url.startswith("https://"):
+    if not url.startswith("https://"): # todo add check for http://
         url = "https://"+url
     return url
+
+
+app.include_router(r)
+
 
 if __name__ == "__main__":
     uvicorn.run(
         "server:app", 
-        reload=os.getenv("DEBUG_MODE") in ("True", "true" "1",1, True), 
+        reload=DEBUG_MODE, 
         port=int(os.getenv("PORT"))
         )
     

@@ -5,6 +5,7 @@ description = "Dead simple url shortener for me"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "alembic>=1.17.2",
     "dotenv>=0.9.9",
     "fastapi>=0.115.9",
     "loguru>=0.7.3",
