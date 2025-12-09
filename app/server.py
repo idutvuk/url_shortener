@@ -40,14 +40,14 @@ async def lifespan(app: FastAPI):
 
 
 app = (
-    FastAPI(lifespan=lifespan)
+    FastAPI(root_path=PREFIX, lifespan=lifespan)
     if DEBUG_MODE
-    else FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    else FastAPI(root_path=PREFIX, lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 )
-r = APIRouter(prefix=PREFIX)
+r = APIRouter()
 
 
-@r.get("/{nickname}", status_code=303)
+@r.get("/{nickname}")
 async def redirect(nickname: str, engine=Depends(get_engine)) -> RedirectResponse:
     with Session(engine) as s:
         statement = select(Link.url).where(Link.nickname == nickname)
@@ -110,6 +110,8 @@ async def create_fast_link(
     engine=Depends(get_engine),
     # user=Depends(auth) # lets say this pointer is public
 ):
+    if not len(url):
+        raise HTTPException(400)
     FAST_LINK_LENGTH = 4
     with Session(engine) as s:
         nicknames = s.exec(select(Link.nickname)).all()
@@ -129,7 +131,7 @@ def generate_fast_link(length) -> str:
 
 def validated_url(url) -> str:
     # too simple but it's okay I guess
-    if not url.startswith("https://"):  # todo add check for http://
+    if not (url.startswith("https://") or url.startswith("http://")):  # todo add check for http://
         url = "https://" + url
     return url
 
